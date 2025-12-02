@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">FoxProject</string>
+    <string name="item">%d</string>
+    <string name="loading">Loading cute foxes...</string>
+    <string name="fail_1">Failed to load foxes</string>
+    <string name="fail_2">Failed to load more foxes</string>
+    <string name="again">Try Again</string>
+</resources>
