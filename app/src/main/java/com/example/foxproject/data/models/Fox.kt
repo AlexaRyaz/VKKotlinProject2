@@ -13,10 +13,3 @@ data class Fox(
     val imageWidth: Int? = null,
     val imageHeight: Int? = null
 )
-
-val Fox.aspectRatio: Float
-    get() = if (imageWidth != null && imageHeight != null && imageWidth > 0) {
-        imageHeight!!.toFloat() / imageWidth!!.toFloat()
-    } else {
-        0.75f
-    }
