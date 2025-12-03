@@ -1,19 +1,23 @@
 package com.example.foxproject.presentation.screens
 
 import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,24 +32,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.paging.LoadState
-import androidx.paging.compose.LazyPagingItems
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
 import coil.compose.AsyncImage
 import com.example.foxproject.R
-import com.example.foxproject.data.models.Fox
 import com.example.foxproject.presentation.viewmodel.FoxViewModel
 
 @Composable
 fun FoxScreen(viewModel: FoxViewModel = viewModel()) {
-    val foxesPagingItems = viewModel.foxesPagingFlow.collectAsLazyPagingItems()
-    val errorState by viewModel.errorState.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
     // Автодогрузка при скролле
@@ -56,101 +54,104 @@ fun FoxScreen(viewModel: FoxViewModel = viewModel()) {
             val totalItems = layoutInfo.totalItemsCount
 
             lastVisibleItem?.index != null &&
-                    lastVisibleItem.index >= totalItems - 3 &&
-                    foxesPagingItems.loadState.append !is LoadState.Loading
+                    lastVisibleItem.index >= totalItems - 3 && !uiState.isLoading
         }
     }
 
-    // Обработка ошибок загрузки
-    LaunchedEffect(foxesPagingItems.loadState) {
-        val error = foxesPagingItems.loadState.refresh as? LoadState.Error
-            ?: foxesPagingItems.loadState.append as? LoadState.Error
-            ?: foxesPagingItems.loadState.prepend as? LoadState.Error
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) {
+            viewModel.loadMore()
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            uiState.isLoading && uiState.foxes.isEmpty() -> {
+                FullScreenLoading()
+            }
 
-        error?.let {
-            viewModel.clearError()
+            uiState.error != null && uiState.foxes.isEmpty() -> {
+                ErrorScreen(
+                    error = uiState.error!!,
+                    onRetry = viewModel::retry
+                )
+            }
+
+            else -> {
+                // Показываем лисиц
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(uiState.foxes) { fox ->
+                        FoxCard(
+                            fox = fox,
+                            index = fox.index,
+                            onClick = { index ->
+                                println("Clicked Fox #${index}")
+                            }
+                        )
+                    }
+
+                    if (uiState.isLoading) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(80.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 fun FoxList(
-    foxesPagingItems: LazyPagingItems<com.example.foxproject.data.models.Fox>,
+    foxes: List<com.example.foxproject.data.models.Fox>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    isLoading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
     onFoxClick: (Int) -> Unit
 ) {
     LazyColumn(
+        state = listState,
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        items(
-            count = foxesPagingItems.itemCount,
-            key = foxesPagingItems.itemKey { it.id },
-            contentType = foxesPagingItems.itemContentType { "fox" }
-        ) { index ->
-            val fox = foxesPagingItems[index]
-            if (fox != null) {
-                FoxCard(
-                    fox = fox,
-                    onClick = { onFoxClick(fox.index) }
-                )
+        itemsIndexed(foxes) { index, fox ->
+            FoxCard(
+                fox = fox,
+                index = index,
+                onClick = onFoxClick
+            )
+        }
+
+        if (isLoading) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
             }
         }
 
-        foxesPagingItems.apply {
-            when {
-                // Первая загрузка
-                loadState.refresh is LoadState.Loading -> {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(200.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(modifier = Modifier.fillMaxSize(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator()
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(text = stringResource(R.string.loading))
-                            }
-                        }
-                    }
-                }
-
-                // Ошибка при первой загрузке
-                loadState.refresh is LoadState.Error -> {
-                    item {
-                        ErrorCard(
-                            message = stringResource(R.string.fail_1),
-                            onRetry = { retry() }
-                        )
-                    }
-                }
-
-                // Индикатор загрузки следующей страницы
-                loadState.append is LoadState.Loading -> {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                }
-
-                // Ошибка при загрузке следующей страницы
-                loadState.append is LoadState.Error -> {
-                    item {
-                        ErrorCard(
-                            message = stringResource(R.string.fail_2),
-                            onRetry = { retry() }
-                        )
-                    }
-                }
+        if (error != null) {
+            item {
+                ErrorCard(
+                    message = error,
+                    onRetry = onRetry
+                )
             }
         }
     }
@@ -158,27 +159,84 @@ fun FoxList(
 
 @Composable
 fun FoxCard(
-    fox: Fox,
-    onClick: (Fox) -> Unit
+    fox: com.example.foxproject.data.models.Fox,
+    index: Int,
+    onClick: (Int) -> Unit
 ) {
     val context = LocalContext.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { Toast.makeText(context, context.getString(R.string.item, fox.index),
-                Toast.LENGTH_SHORT).show() },
+                Toast.LENGTH_SHORT).show()
+            },
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Column {
+            // ИЗОБРАЖЕНИЕ
             AsyncImage(
-                model = fox.imageUrl,
+                model = fox.imageUrl,  // ← URL конктретной лисы
                 contentDescription = "Fox #${fox.index}",
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth(),
                 contentScale = ContentScale.FillWidth
             )
+        }
+    }
+}
+
+@Composable
+fun FullScreenLoading() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(48.dp))
+            Text(
+                text = stringResource(R.string.loading),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
+}
+
+@Composable
+fun ErrorScreen(
+    error: String,
+    onRetry: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.oop),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                Text(text = stringResource(R.string.again))
+            }
         }
     }
 }
@@ -189,32 +247,28 @@ fun ErrorCard(
     onRetry: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.errorContainer
-        ),
-        shape = RoundedCornerShape(12.dp)
+        )
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = message,
+                text = stringResource(R.string.fail),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                color = MaterialTheme.colorScheme.onErrorContainer
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            androidx.compose.material3.Button(
-                onClick = onRetry
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.padding(top = 8.dp)
             ) {
-                Text(text = stringResource(R.string.again))
+                Text(text = stringResource(R.string.retry))
             }
         }
     }
 }
+
