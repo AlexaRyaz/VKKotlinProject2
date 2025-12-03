@@ -1,25 +1,39 @@
-
 package com.example.foxproject.data.repository
 
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.PagingData
 import com.example.foxproject.data.api.FoxApiService
 import com.example.foxproject.data.models.Fox
-import kotlinx.coroutines.flow.Flow
 
 class FoxRepository(
-    private val apiService: FoxApiService
+    private val apiService: FoxApiService,
 ) {
-    fun getFoxesPaging(): Flow<PagingData<Fox>> {
-        return Pager(
-            config = PagingConfig(
-                pageSize = 5,          // Количество элементов на страницу
-                prefetchDistance = 2,   // Когда предзагружать следующую
-                initialLoadSize = 10,   // Первоначальная загрузка
-                enablePlaceholders = false
-            ),
-            pagingSourceFactory = { FoxPagingSource(apiService) }
-        ).flow
+    private val foxesCache = mutableListOf<Fox>()
+    private var currentIndex = 0
+
+    suspend fun getFoxes(count: Int = 10): List<Fox> {
+        val newFoxes = mutableListOf<Fox>()
+
+        repeat(count) {
+            try {
+                val response = apiService.getRandomFox()
+                val fox = Fox(
+                    id = currentIndex,
+                    imageUrl = response.image,
+                    sourceUrl = response.link,
+                    index = currentIndex + 1,
+                    imageWidth = (300..600).random(),
+                    imageHeight = (300..800).random()
+                )
+                newFoxes.add(fox)
+                foxesCache.add(fox)
+                currentIndex++
+            } catch (e: Exception) {
+                // В случае ошибки пропускаем эту лису
+                e.printStackTrace()
+            }
+        }
+
+        return newFoxes
     }
+
+    fun getCachedFoxes(): List<Fox> = foxesCache.toList()
 }
